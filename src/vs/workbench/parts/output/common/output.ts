@@ -57,7 +57,7 @@ export interface IOutputService {
 	append(channel: string, output: string): void;
 
 	/**
-	 * Returns the received output.
+	 * Returns the processed output.
 	 *
 	 * The optional channel allows to ask for output for a specific channel. If you leave the
 	 * channel out, you get the default channels output.

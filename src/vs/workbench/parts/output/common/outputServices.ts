@@ -26,7 +26,7 @@ export class OutputService implements IOutputService {
 	private static MAX_OUTPUT = 10000 /* Lines */ * 100 /* Guestimated chars per line */;
 	private static OUTPUT_DELAY = 300; // delay in ms to accumulate output before emitting an event about it
 
-	private receivedOutput: { [channel: string]: string; };
+	private processedOutput: { [channel: string]: string; };
 
 	private sendOutputEventsTimerId: number;
 	private lastSentOutputEventsTime: number;
@@ -46,7 +46,7 @@ export class OutputService implements IOutputService {
 		this._onOutput = new Emitter<IOutputEvent>();
 		this._onOutputChannel = new Emitter<string>();
 
-		this.receivedOutput = Object.create(null);
+		this.processedOutput = Object.create(null);
 		this.bufferedOutput = Object.create(null);
 		this.sendOutputEventsTimerId = -1;
 		this.lastSentOutputEventsTime = -1;
@@ -72,8 +72,8 @@ export class OutputService implements IOutputService {
 	public append(channel: string, output: string): void {
 
 		// Initialize
-		if (!this.receivedOutput[channel]) {
-			this.receivedOutput[channel] = '';
+		if (!this.processedOutput[channel]) {
+			this.processedOutput[channel] = '';
 
 			this._onOutputChannel.fire(channel); // emit event that we have a new channel
 		}
@@ -83,26 +83,6 @@ export class OutputService implements IOutputService {
 
 		// Store
 		if (output) {
-			let curLength = this.receivedOutput[channel].length;
-			let addLength = output.length;
-
-			// Still below MAX_OUTPUT, so just add
-			if (addLength + curLength <= OutputService.MAX_OUTPUT) {
-				this.receivedOutput[channel] += output;
-			} else {
-
-				// New output exceeds MAX_OUTPUT, so trim beginning and use as received output
-				if (addLength > OutputService.MAX_OUTPUT) {
-					this.receivedOutput[channel] = '...' + output.substr(addLength - OutputService.MAX_OUTPUT);
-				}
-
-				// New output + existing output exceeds MAX_OUTPUT, so trim existing output that it fits new output
-				else {
-					let diff = OutputService.MAX_OUTPUT - addLength;
-					this.receivedOutput[channel] = '...' + this.receivedOutput[channel].substr(curLength - diff) + output;
-				}
-			}
-
 			// Buffer
 			let buffer = this.bufferedOutput[channel];
 			if (!buffer) {
@@ -138,18 +118,38 @@ export class OutputService implements IOutputService {
 		this.lastSentOutputEventsTime = Date.now();
 
 		for (let channel in this.bufferedOutput) {
-			this._onOutput.fire({ output: this.bufferedOutput[channel], channel });
+			let output = this.bufferedOutput[channel];
+			this._onOutput.fire({ output, channel });
+			let curLength = this.processedOutput[channel].length;
+			let addLength = output.length;
+
+			// Still below MAX_OUTPUT, so just add
+			if (addLength + curLength <= OutputService.MAX_OUTPUT) {
+				this.processedOutput[channel] += output;
+			} else {
+
+				// New output exceeds MAX_OUTPUT, so trim beginning and use as received output
+				if (addLength > OutputService.MAX_OUTPUT) {
+					this.processedOutput[channel] = '...' + output.substr(addLength - OutputService.MAX_OUTPUT);
+				}
+
+				// New output + existing output exceeds MAX_OUTPUT, so trim existing output that it fits new output
+				else {
+					let diff = OutputService.MAX_OUTPUT - addLength;
+					this.processedOutput[channel] = '...' + this.processedOutput[channel].substr(curLength - diff) + output;
+				}
+			}
 		}
 
 		this.bufferedOutput = Object.create(null);
 	}
 
 	public getOutput(channel: string): string {
-		return this.receivedOutput[channel] || '';
+		return this.processedOutput[channel] || '';
 	}
 
 	public getChannels(): string[] {
-		return Object.keys(this.receivedOutput);
+		return Object.keys(this.processedOutput);
 	}
 
 	public getActiveChannel(): string {
@@ -157,7 +157,8 @@ export class OutputService implements IOutputService {
 	}
 
 	public clearOutput(channel: string): void {
-		this.receivedOutput[channel] = '';
+		this.processedOutput[channel] = '';
+		delete this.bufferedOutput[channel];
 
 		this._onOutput.fire({ channel: channel, output: null /* indicator to clear output */ });
 	}
